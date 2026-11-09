@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Небоскрёб</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,sans-serif;
+    touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .ui{position:fixed;pointer-events:none}
+  #hud{top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;color:#fff;font-size:14px;text-shadow:0 1px 3px #000;line-height:1.35}
+  .lbl{font-size:12px;opacity:.85;margin-top:4px}
+  .bar{width:180px;height:12px;background:rgba(0,0,0,.5);border-radius:6px;overflow:hidden}
+  .fill{height:100%;width:100%;transition:width .15s}
+  #msg{top:36%;left:0;right:0;text-align:center;color:#fff;font-size:19px;text-shadow:0 2px 5px #000;padding:0 20px}
+  #prompt{top:60%;left:0;right:0;text-align:center;color:#ffe9a8;font-size:17px;text-shadow:0 2px 5px #000}
+  #flash{inset:0;background:rgba(255,240,200,.45);opacity:0}
+  #dmg{inset:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(200,0,0,.7));opacity:0}
+  #joyBase{position:fixed;width:140px;height:140px;margin:-70px 0 0 -70px;border-radius:50%;
+    background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);display:none;pointer-events:none}
+  #joyKnob{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border-radius:50%;background:rgba(255,255,255,.35)}
+  .btn{position:fixed;width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;
+    border:2px solid rgba(255,255,255,.4);font-size:14px;font-weight:600;display:none;align-items:center;justify-content:center;
+    text-align:center;touch-action:none;z-index:5;cursor:pointer;box-sizing:border-box}
+  .btn:active{background:rgba(255,255,255,.35)}
+  .screen{position:fixed;inset:0;background:rgba(0,0,0,.82);color:#fff;display:none;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box;z-index:10}
+  .screen h1{font-size:34px;margin:0 0 12px;letter-spacing:2px}
+  .screen p{max-width:480px;line-height:1.5;opacity:.9;font-size:15px}
+  .screen button{margin-top:18px;padding:14px 34px;font-size:18px;border-radius:12px;border:0;background:#e8a33d;color:#111;font-weight:700;cursor:pointer}
+  #rot{position:fixed;inset:0;background:#000;color:#fff;display:none;align-items:center;justify-content:center;
+    z-index:50;font-size:20px;text-align:center;padding:20px;box-sizing:border-box}
+  @media (orientation:portrait){#rot{display:flex}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud" class="ui" style="display:none">
+  <div>Этаж <b id="hFloor">1</b> из 15</div>
+  <div class="lbl">ЗДОРОВЬЕ</div><div class="bar"><div class="fill" id="hpF" style="background:#e5484d"></div></div>
+  <div class="lbl">СЫТОСТЬ</div><div class="bar"><div class="fill" id="hgF" style="background:#e8a33d"></div></div>
+  <div class="lbl">Еда: <b id="hFood">0</b> · Оружие: <b id="hWpn">Кулаки</b> <span id="hAmmo"></span></div>
+</div>
+<div id="msg" class="ui"></div>
+<div id="prompt" class="ui"></div>
+<div id="flash" class="ui"></div>
+<div id="dmg" class="ui"></div>
+<div id="joyBase"><div id="joyKnob"></div></div>
+<button class="btn" id="bAtk" style="right:20px;bottom:30px;width:96px;height:96px;font-size:16px">УДАР</button>
+<button class="btn" id="bInt" style="right:132px;bottom:34px">ВЗЯТЬ</button>
+<button class="btn" id="bEat" style="right:20px;bottom:146px">ЕСТЬ</button>
+<button class="btn" id="bWpn" style="right:132px;bottom:146px">ОРУЖИЕ</button>
+
+<div id="sStart" class="screen" style="display:flex">
+  <h1>НЕБОСКРЁБ</h1>
+  <p>Ты застрял в высотке. Собирай еду в квартирах, ищи оружие и поднимайся по лестнице на крышу, где ждёт вертолёт. Отбивайся от мутантов и не дай себе умереть с голоду.</p>
+  <p style="font-size:13px;opacity:.75">Телефон: левая половина экрана — движение, правая — взгляд. Кнопки справа: УДАР, ВЗЯТЬ, ЕСТЬ, ОРУЖИЕ.<br>ПК: WASD — движение, мышь или стрелки — обзор, ЛКМ или F — удар, E — взять, Q — есть, R — сменить оружие. Esc — выйти из захвата мыши, клик по экрану — вернуть.</p>
+  <button id="bStart">Начать</button>
+</div>
+<div id="sOver" class="screen"><h1>ТЫ ПОГИБ</h1><p>Небоскрёб оказался сильнее.</p><button id="bAgain1">Заново</button></div>
+<div id="sWin" class="screen"><h1>ВЕРТОЛЁТ!</h1><p>Ты добрался до крыши и спасён. Выжил!</p><button id="bAgain2">Ещё раз</button></div>
+<div id="rot">Поверните телефон горизонтально для игры</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const MAX_FLOOR = 15, T = 0.2;
+const WEAPONS = {
+  fist:   {name:'Кулаки',    dmg:12, range:1.8, cd:0.45},
+  knife:  {name:'Нож',       dmg:24, range:2.0, cd:0.35},
+  bat:    {name:'Бита',      dmg:38, range:2.5, cd:0.6},
+  pistol: {name:'Пистолет',  dmg:55, ranged:true, cd:0.5}
+};
+const ORDER = ['fist','knife','bat','pistol'];
+const rand = (a,b) => a + Math.random()*(b-a);
+
+// ---------- Three.js ----------
+const renderer = new THREE.WebGLRenderer({canvas: $('c'), antialias: true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0d12);
+scene.fog = new THREE.Fog(0x0b0d12, 6, 32);
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 60);
+scene.add(camera);
+scene.add(new THREE.AmbientLight(0x8a96a8, 0.7));
+const flashLight = new THREE.PointLight(0xfff0d0, 1.4, 10, 1.5);
+camera.add(flashLight);
+window.addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+});
+
+const M = {
+  wall:   new THREE.MeshLambertMaterial({color:0xa9b0b8}),
+  floor:  new THREE.MeshLambertMaterial({color:0x5a5f66}),
+  corr:   new THREE.MeshLambertMaterial({color:0x6e7379}),
+  ceil:   new THREE.MeshLambertMaterial({color:0x2e3238}),
+  wood:   new THREE.MeshLambertMaterial({color:0x6b4a2b}),
+  bed:    new THREE.MeshLambertMaterial({color:0x7d8fa6}),
+  light:  new THREE.MeshBasicMaterial({color:0xfff3d0}),
+  stairU: new THREE.MeshBasicMaterial({color:0x44aaff}),
+  stairD: new THREE.MeshBasicMaterial({color:0xff9933}),
+  enemy:  new THREE.MeshLambertMaterial({color:0x5c7a4a}),
+  head:   new THREE.MeshLambertMaterial({color:0x8fbf6a}),
+  eye:    new THREE.MeshBasicMaterial({color:0xff2222}),
+  food:   new THREE.MeshLambertMaterial({color:0xff8a2a, emissive:0x331100}),
+  bat:    new THREE.MeshLambertMaterial({color:0x9a6a3a}),
+  knife:  new THREE.MeshLambertMaterial({color:0xcfd6dc}),
+  pistol: new THREE.MeshLambertMaterial({color:0x222426})
+};
+
+// ---------- state ----------
+const P = {x:-16, z:0, yaw:0, pitch:0, cd:0, hp:100, hunger:100, food:0,
+           owned:{fist:true}, cur:'fist', ammo:0, floor:1, over:false, hitT:0};
+let game = false;
+let world = null, walls = [], items = [], enemies = [];
+const loot = new Map();   // key floor_index -> loot record (persists across visits)
+let msgT = 0, flashT = 0;
+
+const keys = {};
+const joy = {id:null, x:0, y:0, ox:0, oy:0};
+const joyBase = $('joyBase'), joyKnob = $('joyKnob');
+const JOY_R = 60;
+let lookId = null, lookX = 0, lookY = 0;
+
+// ---------- helpers ----------
+function box(w,h,d,mat,x,y,z){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  m.position.set(x,y,z); world.add(m); return m;
+}
+function addWall(x0,x1,z0,z1,mat=M.wall,h=3){
+  walls.push({minX:x0,maxX:x1,minZ:z0,maxZ:z1});
+  box(x1-x0,h,z1-z0,mat,(x0+x1)/2,h/2,(z0+z1)/2);
+}
+function pushOut(p,r){
+  for(const w of walls){
+    const cx = Math.max(w.minX, Math.min(p.x, w.maxX));
+    const cz = Math.max(w.minZ, Math.min(p.z, w.maxZ));
+    const dx = p.x-cx, dz = p.z-cz, d2 = dx*dx+dz*dz;
+    if(d2 < r*r){
+      if(d2 > 1e-8){ const d=Math.sqrt(d2), k=(r-d)/d; p.x+=dx*k; p.z+=dz*k; }
+      else {
+        const l=p.x-w.minX, rr=w.maxX-p.x, t=p.z-w.minZ, b=w.maxZ-p.z;
+        const m=Math.min(l,rr,t,b);
+        if(m===l) p.x=w.minX-r; else if(m===rr) p.x=w.maxX+r;
+        else if(m===t) p.z=w.minZ-r; else p.z=w.maxZ+r;
+      }
+    }
+  }
+}
+function msg(t, sec=2.2){ $('msg').textContent = t; msgT = sec; }
+function show(id){ document.querySelectorAll('.screen').forEach(s=>s.style.display='none'); $(id).style.display='flex'; }
+function nameOf(d){ return d.type==='food' ? 'консервы' : (d.w==='pistol' ? 'пистолет (+патроны)' : WEAPONS[d.w].name); }
+
+// ---------- world generation ----------
+function rollLoot(){
+  const r = Math.random();
+  if(r < 0.42) return {type:'food', taken:false};
+  if(r < 0.55) return {type:'weapon', w:'knife', taken:false};
+  if(r < 0.68) return {type:'weapon', w:'bat', taken:false};
+  if(r < 0.76) return {type:'weapon', w:'pistol', taken:false};
+  return {type:'none', taken:true};
+}
+function spawnItem(data, x, z, key){
+  let m;
+  if(data.type==='food') m = box(0.35,0.3,0.35,M.food,x,0.95,z);
+  else if(data.w==='bat') m = box(0.12,0.12,0.8,M.bat,x,0.9,z);
+  else if(data.w==='knife') m = box(0.1,0.04,0.35,M.knife,x,0.88,z);
+  else m = box(0.3,0.12,0.2,M.pistol,x,0.9,z);
+  items.push({x,z,data,key,mesh:m});
+}
+function spawnEnemy(x,z){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.9,0.3), M.enemy); body.position.y = 0.85; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22,10,8), M.head); head.position.y = 1.5; g.add(head);
+  for(const sx of [-0.09,0.09]){
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04,6,6), M.eye);
+    eye.position.set(sx,1.55,0.19); g.add(eye);
+  }
+  g.position.set(x,0,z); world.add(g);
+  enemies.push({x,z,mesh:g,hp:60,atk:0,wt:0,wx:0,wz:0,dead:false,sp:1.1+P.floor*0.05});
+}
+function buildFloor(){
+  if(world) scene.remove(world);
+  world = new THREE.Group(); scene.add(world);
+  walls = []; items = []; enemies = [];
+  const F = P.floor;
+
+  box(40,0.1,20,M.floor,0,-0.05,0);
+  box(40,0.04,4,M.corr,0,0.02,0);
+  box(40,0.1,20,M.ceil,0,3.05,0);
+  for(const x of [-15,-5,5,15]) box(2,0.05,0.8,M.light,x,2.97,0);
+
+  // outer walls with openings at both corridor ends
+  addWall(-20-T,20+T,-10-T,-10);
+  addWall(-20-T,20+T,10,10+T);
+  addWall(-20-T,-20,-10,-2); addWall(-20-T,-20,2,10);
+  addWall(20,20+T,-10,-2);   addWall(20,20+T,2,10);
+
+  // stairs: blue = up (east), orange = down (west)
+  box(1.6,0.05,3,M.stairU,18.5,0.03,0);
+  if(F>1) box(1.6,0.05,3,M.stairD,-18.5,0.03,0);
+
+  // apartments: 8 per side
+  for(const side of [-1,1]){
+    const zE = side<0 ? -2 : 2, zF = side<0 ? -10 : 10;
+    const zMin = Math.min(zE,zF), zMax = Math.max(zE,zF);
+    for(let i=0;i<8;i++){
+      const idx = (side<0 ? 0 : 8) + i;
+      const x0 = -20 + i*5, x1 = x0 + 5, cx = x0 + 2.5, cz = (zE+zF)/2;
+      if(i>0) addWall(x0-T/2, x0+T/2, zMin, zMax);
+      addWall(x0, cx-0.8, zE-T/2, zE+T/2);
+      addWall(cx+0.8, x1, zE-T/2, zE+T/2);
+      addWall(cx-0.7, cx+0.7, cz-0.4, cz+0.4, M.wood, 0.8);
+      const bz = side<0 ? [zF+0.3, zF+2.3] : [zF-2.3, zF-0.3];
+      addWall(x0+0.3, x0+1.5, bz[0], bz[1], M.bed, 0.6);
+
+      const key = F+'_'+idx;
+      if(!loot.has(key)) loot.set(key, rollLoot());
+      const rec = loot.get(key);
+      if(!rec.taken) spawnItem(rec, cx, cz, key);
+    }
+  }
+
+  // enemies
+  const n = Math.min(3+F, 14);
+  for(let k=0;k<n;k++){
+    let x, z, tries = 0;
+    do {
+      if(Math.random()<0.4){ x = rand(-17,17); z = rand(-1.5,1.5); }
+      else {
+        const side = Math.random()<0.5 ? -1 : 1;
+        const i = Math.floor(Math.random()*8);
+        x = -20 + i*5 + rand(0.6,4.4);
+        z = side<0 ? rand(-9.4,-2.6) : rand(2.6,9.4);
+      }
+      tries++;
+    } while(Math.hypot(x-P.x, z-P.z) < 12 && tries < 30);
+    spawnEnemy(x,z);
+  }
+}
+
+// ---------- gameplay ----------
+function newGame(){
+  Object.assign(P, {x:-16, z:0, yaw:0, pitch:0, cd:0, hp:100, hunger:100, food:0,
+    owned:{fist:true}, cur:'fist', ammo:0, floor:1, over:false, hitT:0});
+  loot.clear();
+  buildFloor();
+  game = true;
+  $('hud').style.display = 'block';
+  for(const id of ['bAtk','bInt','bEat','bWpn']) $(id).style.display = 'flex';
+  document.querySelectorAll('.screen').forEach(s=>s.style.display='none');
+  msg('Ты на 1 этаже. Ищи еду и оружие, поднимайся на крышу (15 этаж).', 4);
+  if(!('ontouchstart' in window)){
+    const p = renderer.domElement.requestPointerLock();
+    if(p && p.catch) p.catch(()=>{});
+    setTimeout(()=>{ if(!document.pointerLockElement) msg('Кликни по экрану, чтобы смотреть мышью (или стрелками)', 4); }, 4200);
+  }
+}
+function changeFloor(d){
+  if(d>0 && P.floor===MAX_FLOOR){ win(); return; }
+  P.floor += d;
+  P.x = d>0 ? -16 : 16; P.z = 0;
+  buildFloor();
+  msg(d>0 ? 'Поднимаюсь: этаж '+P.floor : 'Спускаюсь: этаж '+P.floor);
+}
+function gameOver(){ P.over = true; game=false; show('sOver'); }
+function win(){ P.over = true; game=false; show('sWin'); }
+
+function damage(n){ P.hp -= n; P.hitT = 0.35; }
+function hitEnemy(e,dmg){
+  if(e.dead) return;
+  e.hp -= dmg;
+  if(e.hp<=0){ e.dead = true; world.remove(e.mesh); }
+}
+function attack(){
+  if(P.cd>0 || P.over || !game) return;
+  const w = WEAPONS[P.cur];
+  const fx=-Math.sin(P.yaw), fz=-Math.cos(P.yaw);
+  if(w.ranged){
+    if(P.ammo<=0){ msg('Нет патронов', 1.2); P.cd=0.4; return; }
+    P.ammo--; P.cd=w.cd; flashT=0.08;
+    let best=null, bd=1e9;
+    for(const e of enemies){
+      if(e.dead) continue;
+      const dx=e.x-P.x, dz=e.z-P.z, d=Math.hypot(dx,dz);
+      if(d>30) continue;
+      const along = dx*fx+dz*fz;
+      if(along<=0) continue;
+      const lateral = Math.abs(dx*fz-dz*fx);
+      if(lateral < 0.35+along*0.06 && along<bd){ bd=along; best=e; }
+    }
+    if(best) hitEnemy(best, w.dmg);
+    return;
+  }
+  P.cd = w.cd;
+  for(const e of enemies){
+    if(e.dead) continue;
+    const dx=e.x-P.x, dz=e.z-P.z, d=Math.hypot(dx,dz);
+    if(d>w.range) continue;
+    if(d>0 && (dx*fx+dz*fz)/d < 0.3) continue;
+    hitEnemy(e, w.dmg);
+  }
+}
+function interact(){
+  if(!game || P.over) return;
+  const near = nearestItem();
+  if(!near){ msg('Здесь ничего нет', 1.2); return; }
+  const d = near.data;
+  if(d.type==='food'){ P.food++; msg('Взял: консервы'); }
+  else {
+    if(d.w==='pistol'){ P.ammo += 8; msg('Пистолет и патроны +8'); }
+    else msg('Нашёл: '+WEAPONS[d.w].name);
+    P.owned[d.w] = true; P.cur = d.w;
+  }
+  world.remove(near.mesh);
+  loot.get(near.key).taken = true;
+  items.splice(items.indexOf(near),1);
+}
+function nearestItem(){
+  let best=null, bd=2.2;
+  for(const it of items){
+    const d = Math.hypot(it.x-P.x, it.z-P.z);
+    if(d<bd){ bd=d; best=it; }
+  }
+  return best;
+}
+function eat(){
+  if(!game || P.over) return;
+  if(P.food<=0){ msg('Нечего есть', 1.2); return; }
+  if(P.hunger>=100 && P.hp>=100){ msg('Ты сыт', 1.2); return; }
+  P.food--; P.hunger = Math.min(100, P.hunger+40); P.hp = Math.min(100, P.hp+10);
+  msg('Съел консервы', 1.5);
+}
+function cycleWeapon(){
+  if(!game) return;
+  const owned = ORDER.filter(w=>P.owned[w]);
+  const i = owned.indexOf(P.cur);
+  P.cur = owned[(i+1)%owned.length];
+  msg('Оружие: '+WEAPONS[P.cur].name, 1.2);
+}
+
+function update(dt){
+  // turning with arrow keys
+  if(keys.ArrowLeft) P.yaw += 2.2*dt;
+  if(keys.ArrowRight) P.yaw -= 2.2*dt;
+  if(keys.ArrowUp) P.pitch = Math.min(1.2, P.pitch + 1.5*dt);
+  if(keys.ArrowDown) P.pitch = Math.max(-1.2, P.pitch - 1.5*dt);
+  // movement
+  let jx = joy.x, jz = joy.y;
+  if(keys.KeyW) jz += 1; if(keys.KeyS) jz -= 1;
+  if(keys.KeyD) jx += 1; if(keys.KeyA) jx -= 1;
+  const l = Math.hypot(jx,jz); if(l>1){ jx/=l; jz/=l; }
+  const fx=-Math.sin(P.yaw), fz=-Math.cos(P.yaw);
+  const rx=Math.cos(P.yaw), rz=-Math.sin(P.yaw);
+  const sp = 3.0*dt;
+  P.x += (rx*jx + fx*jz)*sp;
+  P.z += (rz*jx + fz*jz)*sp;
+  pushOut(P, 0.35);
+
+  // stairs
+  if(Math.abs(P.z)<2){
+    if(P.x>18.3) changeFloor(1);
+    else if(P.x<-18.3 && P.floor>1) changeFloor(-1);
+  }
+
+  P.cd = Math.max(0, P.cd-dt);
+  P.hitT = Math.max(0, P.hitT-dt);
+  flashT = Math.max(0, flashT-dt);
+
+  // hunger / health
+  P.hunger = Math.max(0, P.hunger - dt*0.5);
+  if(P.hunger<=0) P.hp -= 2*dt;
+  else if(P.hunger>60 && P.hp<100) P.hp = Math.min(100, P.hp + dt*1.5);
+
+  // items spin
+  for(const it of items) it.mesh.rotation.y += dt*1.5;
+
+  // enemies
+  for(const e of enemies){
+    if(e.dead) continue;
+    const dx=P.x-e.x, dz=P.z-e.z, d=Math.hypot(dx,dz);
+    e.atk = Math.max(0, e.atk-dt);
+    let mx=0, mz=0, spd=e.sp;
+    if(d<14){
+      if(d>0.001){ mx=dx/d; mz=dz/d; }
+    } else {
+      e.wt -= dt;
+      if(e.wt<=0){ const a=Math.random()*6.283; e.wx=Math.cos(a); e.wz=Math.sin(a); e.wt=2+Math.random()*3; }
+      mx=e.wx; mz=e.wz; spd=e.sp*0.35;
+    }
+    if(d>0.9 || d>=14){ e.x += mx*spd*dt; e.z += mz*spd*dt; }
+    pushOut(e, 0.35);
+    if(d<1.1 && e.atk<=0){ e.atk = 1.0; damage(12); }
+    e.mesh.position.set(e.x, 0, e.z);
+    if(d>0.001) e.mesh.rotation.y = Math.atan2(dx,dz);
+  }
+  enemies = enemies.filter(e=>!e.dead);
+
+  // messages
+  if(msgT>0){ msgT -= dt; if(msgT<=0) $('msg').textContent=''; }
+
+  // prompt
+  const near = nearestItem();
+  $('prompt').textContent = near ? 'ВЗЯТЬ: '+nameOf(near.data) : '';
+
+  if(P.hp<=0){ P.hp=0; gameOver(); }
+}
+
+function hud(){
+  $('hFloor').textContent = P.floor;
+  $('hpF').style.width = Math.max(0,P.hp)+'%';
+  $('hgF').style.width = P.hunger+'%';
+  $('hFood').textContent = P.food;
+  $('hWpn').textContent = WEAPONS[P.cur].name;
+  $('hAmmo').textContent = P.owned.pistol ? '· патроны: '+P.ammo : '';
+  $('flash').style.opacity = Math.max(0, flashT/0.08);
+  $('dmg').style.opacity = Math.max(0, P.hitT/0.35);
+}
+
+// ---------- input ----------
+addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  keys[e.code]=true;
+  if(e.code==='KeyE') interact();
+  if(e.code==='KeyQ') eat();
+  if(e.code==='KeyF') attack();
+  if(e.code==='KeyR') cycleWeapon();
+});
+addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+function look(dx,dy,s){
+  P.yaw -= dx*s;
+  P.pitch = Math.max(-1.2, Math.min(1.2, P.pitch - dy*s));
+}
+function updateKnob(dx,dy){
+  joyKnob.style.transform = `translate(${dx}px,${dy}px)`;
+}
+addEventListener('pointerdown', e=>{
+  if(!game || P.over) return;
+  if(e.target.closest && e.target.closest('button')) return;
+  if(e.pointerType==='mouse'){
+    if(!document.pointerLockElement){ try{ renderer.domElement.requestPointerLock(); }catch(_){} }
+    else if(e.button===0) attack();
+    return;
+  }
+  if(e.clientX < innerWidth*0.5){
+    if(joy.id===null){
+      joy.id=e.pointerId; joy.ox=e.clientX; joy.oy=e.clientY; joy.x=0; joy.y=0;
+      joyBase.style.left=e.clientX+'px'; joyBase.style.top=e.clientY+'px';
+      joyBase.style.display='block'; updateKnob(0,0);
+    }
+  } else if(lookId===null){
+    lookId=e.pointerId; lookX=e.clientX; lookY=e.clientY;
+  }
+});
+addEventListener('pointermove', e=>{
+  if(!game) return;
+  if(e.pointerType==='mouse'){
+    if(document.pointerLockElement) look(e.movementX, e.movementY, 0.0025);
+    return;
+  }
+  if(e.pointerId===joy.id){
+    let dx=e.clientX-joy.ox, dy=e.clientY-joy.oy;
+    const d=Math.hypot(dx,dy), k = d>JOY_R ? JOY_R/d : 1;
+    dx*=k; dy*=k;
+    joy.x = dx/JOY_R; joy.y = -dy/JOY_R;
+    updateKnob(dx,dy);
+  } else if(e.pointerId===lookId){
+    look(e.clientX-lookX, e.clientY-lookY, 0.006);
+    lookX=e.clientX; lookY=e.clientY;
+  }
+});
+function endPtr(e){
+  if(e.pointerId===joy.id){ joy.id=null; joy.x=0; joy.y=0; joyBase.style.display='none'; }
+  if(e.pointerId===lookId) lookId=null;
+}
+addEventListener('pointerup', endPtr);
+addEventListener('pointercancel', endPtr);
+
+$('bAtk').addEventListener('pointerdown', e=>{ e.preventDefault(); attack(); });
+$('bInt').addEventListener('pointerdown', e=>{ e.preventDefault(); interact(); });
+$('bEat').addEventListener('pointerdown', e=>{ e.preventDefault(); eat(); });
+$('bWpn').addEventListener('pointerdown', e=>{ e.preventDefault(); cycleWeapon(); });
+$('bStart').onclick = newGame;
+$('bAgain1').onclick = newGame;
+$('bAgain2').onclick = newGame;
+
+// ---------- loop ----------
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  if(game && !P.over) update(dt);
+  camera.position.set(P.x, 1.6, P.z);
+  camera.rotation.set(P.pitch, P.yaw, 0, 'YXZ');
+  if(game) hud();
+  renderer.render(scene, camera);
+}
+// initial empty scene behind the start screen
+world = new THREE.Group(); scene.add(world);
+buildFloor();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
